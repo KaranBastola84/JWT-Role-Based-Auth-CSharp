@@ -70,18 +70,24 @@ namespace JWTAuthAPI.Controllers
                 return Unauthorized(new { message = "Account is inactive. Please contact administrator." });
 
             // Generate JWT token
-            var token = GenerateJwtToken(user);
+            var accessToken = GenerateJwtToken(user, isRefresh: false);
+            var refreshToken = GenerateJwtToken(user, isRefresh: true);
+
+            user.RefreshToken = refreshToken;
+            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(1);
+            await _context.SaveChangesAsync();
 
             return Ok(new
             {
                 message = "Login successful",
-                token = token,
+                refresh = refreshToken,
+                access = accessToken,
                 username = user.Username,
                 role = user.Role
             });
         }
 
-        private string GenerateJwtToken(ApplicationUser user)
+        private string GenerateJwtToken(ApplicationUser user, bool isRefresh)
         {
             var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
             var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
@@ -93,6 +99,24 @@ namespace JWTAuthAPI.Controllers
                 new Claim(ClaimTypes.Email, user.Email),
                 new Claim(ClaimTypes.Role, user.Role)
             };
+
+            // For refresh tokens, add a token_type claim
+            if (isRefresh)
+            {
+                var claimsList = new List<Claim>(claims)
+                {
+                    new Claim("token_type", "refresh")
+                };
+                claims = claimsList.ToArray();
+            }
+            else
+            {
+                var claimsList = new List<Claim>(claims)
+                {
+                    new Claim("token_type", "access")
+                };
+                claims = claimsList.ToArray();
+            }
 
             var token = new JwtSecurityToken(
                 issuer: _config["Jwt:Issuer"],
