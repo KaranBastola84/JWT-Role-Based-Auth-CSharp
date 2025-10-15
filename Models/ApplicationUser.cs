@@ -8,7 +8,7 @@ namespace JWTAuthAPI.Models
     public class ApplicationUser
     {
         public int Id { get; set; } // Primary key
-        public string Username  { get; set; } = string.Empty; 
+        public string Username  { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty; // hashed password
         public string Role { get; set; } = "User"; // Default role is "User"
