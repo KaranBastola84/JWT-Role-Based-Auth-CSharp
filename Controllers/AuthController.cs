@@ -1,11 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
-using Microsoft.IdentityModel.Tokens;
 using JWTAuthAPI.Data;
 using JWTAuthAPI.Models;
+using JWTAuthAPI.Services;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace JWTAuthAPI.Controllers
 {
@@ -14,12 +12,12 @@ namespace JWTAuthAPI.Controllers
     public class AuthController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
-        private readonly IConfiguration _config;
+        private readonly JwtService _jwtService;
 
-        public AuthController(ApplicationDbContext context, IConfiguration config)
+        public AuthController(ApplicationDbContext context, JwtService jwtService)
         {
             _context = context;
-            _config = config;
+            _jwtService = jwtService;
         }
         [HttpPost("register")]
         public async Task<IActionResult> Register(RegisterDto registerDto)
@@ -59,74 +57,194 @@ namespace JWTAuthAPI.Controllers
 
             // Check if user exists
             if (user == null)
-                return Unauthorized(new { message = "Invalid username or password" });
+                return Unauthorized(new ApiResponse<string>
+                {
+                    StatusCode = 401,
+                    IsSuccess = false,
+                    ErrorMessage = { "Invalid username or password" }
+                });
 
             // Verify password
             if (!BCrypt.Net.BCrypt.Verify(loginDto.Password, user.PasswordHash))
-                return Unauthorized(new { message = "Invalid username or password" });
+                return Unauthorized(new ApiResponse<string>
+                {
+                    StatusCode = 401,
+                    IsSuccess = false,
+                    ErrorMessage = { "Invalid username or password" }
+                });
 
             // Check if user is active
             if (!user.IsActive)
-                return Unauthorized(new { message = "Account is inactive. Please contact administrator." });
+                return Unauthorized(new ApiResponse<string>
+                {
+                    StatusCode = 401,
+                    IsSuccess = false,
+                    ErrorMessage = { "Account is inactive. Please contact administrator." }
+                });
 
-            // Generate JWT token
-            var accessToken = GenerateJwtToken(user, isRefresh: false);
-            var refreshToken = GenerateJwtToken(user, isRefresh: true);
+            // Generate JWT tokens
+            var accessToken = _jwtService.GenerateAccessToken(user);
+            var refreshToken = _jwtService.GenerateRefreshToken(user);
 
             user.RefreshToken = refreshToken;
-            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(1);
+            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
             await _context.SaveChangesAsync();
 
-            return Ok(new
+            return Ok(new ApiResponse<object>
             {
-                message = "Login successful",
-                refresh = refreshToken,
-                access = accessToken,
-                username = user.Username,
-                role = user.Role
+                StatusCode = 200,
+                IsSuccess = true,
+                Result = new
+                {
+                    refresh = refreshToken,
+                    access = accessToken,
+                    user = new { role = user.Role, username = user.Username }
+                }
             });
         }
 
-        private string GenerateJwtToken(ApplicationUser user, bool isRefresh)
+        [HttpPost("refresh")]
+        public async Task<IActionResult> RefreshToken(RefreshTokenDto refreshTokenDto)
         {
-            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
-            var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+            // Validate the refresh token
+            var principal = _jwtService.ValidateToken(refreshTokenDto.RefreshToken);
 
-            var claims = new[]
-            {
-                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                new Claim(ClaimTypes.Name, user.Username),
-                new Claim(ClaimTypes.Email, user.Email),
-                new Claim(ClaimTypes.Role, user.Role)
-            };
-
-            // For refresh tokens, add a token_type claim
-            if (isRefresh)
-            {
-                var claimsList = new List<Claim>(claims)
+            if (principal == null)
+                return Unauthorized(new ApiResponse<string>
                 {
-                    new Claim("token_type", "refresh")
-                };
-                claims = claimsList.ToArray();
-            }
-            else
-            {
-                var claimsList = new List<Claim>(claims)
+                    StatusCode = 401,
+                    IsSuccess = false,
+                    ErrorMessage = { "Invalid or expired refresh token" }
+                });
+
+            // Check if it's actually a refresh token
+            var tokenType = _jwtService.GetClaimValue(principal, "token_type");
+            if (tokenType != "refresh")
+                return Unauthorized(new ApiResponse<string>
                 {
-                    new Claim("token_type", "access")
-                };
-                claims = claimsList.ToArray();
-            }
+                    StatusCode = 401,
+                    IsSuccess = false,
+                    ErrorMessage = { "Invalid token type. Expected refresh token" }
+                });
 
-            var token = new JwtSecurityToken(
-                issuer: _config["Jwt:Issuer"],
-                audience: _config["Jwt:Audience"],
-                claims: claims,
-                expires: DateTime.UtcNow.AddHours(1), // Token valid for 1 hour
-                signingCredentials: credentials
-            );
+            // Get user ID from token
+            var userIdClaim = _jwtService.GetClaimValue(principal, ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+                return Unauthorized(new ApiResponse<string>
+                {
+                    StatusCode = 401,
+                    IsSuccess = false,
+                    ErrorMessage = { "Invalid token claims" }
+                });
 
-            return new JwtSecurityTokenHandler().WriteToken(token);
+            // Find user in database
+            var user = await _context.ApplicationUsers.FindAsync(userId);
+
+            if (user == null)
+                return Unauthorized(new ApiResponse<string>
+                {
+                    StatusCode = 401,
+                    IsSuccess = false,
+                    ErrorMessage = { "User not found" }
+                });
+
+            // Check if user is active
+            if (!user.IsActive)
+                return Unauthorized(new ApiResponse<string>
+                {
+                    StatusCode = 401,
+                    IsSuccess = false,
+                    ErrorMessage = { "Account is inactive" }
+                });
+
+            // Verify the refresh token matches the one in database
+            if (user.RefreshToken != refreshTokenDto.RefreshToken)
+                return Unauthorized(new ApiResponse<string>
+                {
+                    StatusCode = 401,
+                    IsSuccess = false,
+                    ErrorMessage = { "Invalid refresh token" }
+                });
+
+            // Check if refresh token has expired
+            if (user.RefreshTokenExpiryTime <= DateTime.UtcNow)
+                return Unauthorized(new ApiResponse<string>
+                {
+                    StatusCode = 401,
+                    IsSuccess = false,
+                    ErrorMessage = { "Refresh token has expired. Please log in again" }
+                });
+
+            // Generate new tokens
+            var newAccessToken = _jwtService.GenerateAccessToken(user);
+            var newRefreshToken = _jwtService.GenerateRefreshToken(user);
+
+            // Update refresh token in database
+            user.RefreshToken = newRefreshToken;
+            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return Ok(new ApiResponse<object>
+            {
+                StatusCode = 200,
+                IsSuccess = true,
+                Result = new
+                {
+                    access = newAccessToken,
+                    refresh = newRefreshToken,
+                    user = new { role = user.Role, username = user.Username }
+                }
+            });
+        }
+
+        [HttpPost("logout")]
+        public async Task<IActionResult> Logout(RefreshTokenDto refreshTokenDto)
+        {
+            // Validate the refresh token
+            var principal = _jwtService.ValidateToken(refreshTokenDto.RefreshToken);
+
+            if (principal == null)
+                return BadRequest(new ApiResponse<string>
+                {
+                    StatusCode = 400,
+                    IsSuccess = false,
+                    ErrorMessage = { "Invalid token" }
+                });
+
+            // Get user ID from token
+            var userIdClaim = _jwtService.GetClaimValue(principal, ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+                return BadRequest(new ApiResponse<string>
+                {
+                    StatusCode = 400,
+                    IsSuccess = false,
+                    ErrorMessage = { "Invalid token claims" }
+                });
+
+            // Find user in database
+            var user = await _context.ApplicationUsers.FindAsync(userId);
+
+            if (user == null)
+                return NotFound(new ApiResponse<string>
+                {
+                    StatusCode = 404,
+                    IsSuccess = false,
+                    ErrorMessage = { "User not found" }
+                });
+
+            // Clear refresh token
+            user.RefreshToken = null;
+            user.RefreshTokenExpiryTime = null;
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return Ok(new ApiResponse<string>
+            {
+                StatusCode = 200,
+                IsSuccess = true,
+                Result = "Logged out successfully"
+            });
         }
     }
 }

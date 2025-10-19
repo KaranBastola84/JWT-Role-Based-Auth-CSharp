@@ -1,6 +1,53 @@
 @JWTAuthAPI_HostAddress = http://localhost:5147
+@accessToken = 
+@refreshToken = 
 
+### Register a new user
+POST {{JWTAuthAPI_HostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "email": "testuser@example.com",
+  "password": "SecurePass123"
+}
+
+###
+
+### Login
+POST {{JWTAuthAPI_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "password": "SecurePass123"
+}
+
+###
+
+### Refresh Token (Use the refresh token from login response)
+POST {{JWTAuthAPI_HostAddress}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+###
+
+### Logout (Use the refresh token)
+POST {{JWTAuthAPI_HostAddress}}/api/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+###
+
+### Protected Endpoint Example (Use the access token in Authorization header)
 GET {{JWTAuthAPI_HostAddress}}/weatherforecast/
 Accept: application/json
+Authorization: Bearer {{accessToken}}
 
 ###
