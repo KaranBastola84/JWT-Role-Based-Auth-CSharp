@@ -34,6 +34,7 @@ namespace JWTAuthAPI.Services
                 issuer: _config["Jwt:Issuer"],
                 audience: _config["Jwt:Audience"],
                 claims: claims,
+                notBefore: DateTime.UtcNow,
                 expires: DateTime.UtcNow.AddHours(1), // Token valid for 1 hour
                 signingCredentials: credentials
             );
@@ -59,6 +60,7 @@ namespace JWTAuthAPI.Services
                 issuer: _config["Jwt:Issuer"],
                 audience: _config["Jwt:Audience"],
                 claims: claims,
+                notBefore: DateTime.UtcNow,
                 expires: DateTime.UtcNow.AddDays(7), // Refresh token valid for 7 days
                 signingCredentials: credentials
             );
@@ -75,14 +77,12 @@ namespace JWTAuthAPI.Services
 
                 var validationParameters = new TokenValidationParameters
                 {
-                    ValidateIssuer = true,
-                    ValidateAudience = true,
+                    ValidateIssuer = false,
+                    ValidateAudience = false,
                     ValidateLifetime = true,
                     ValidateIssuerSigningKey = true,
-                    ValidIssuer = _config["Jwt:Issuer"],
-                    ValidAudience = _config["Jwt:Audience"],
                     IssuerSigningKey = new SymmetricSecurityKey(key),
-                    ClockSkew = TimeSpan.Zero // No tolerance for expired tokens
+                    ClockSkew = TimeSpan.FromMinutes(5)
                 };
 
                 var principal = tokenHandler.ValidateToken(token, validationParameters, out SecurityToken validatedToken);

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using JWTAuthAPI.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using System.Text;
 
 
@@ -9,7 +10,48 @@ var builder = WebApplication.CreateBuilder(args); // Create a builder for the we
 
 builder.Services.AddControllers(); // Add support for controllers
 builder.Services.AddEndpointsApiExplorer(); // Add support for API endpoint exploration
-builder.Services.AddSwaggerGen(); // Add Swagger generation
+
+// Configure Swagger with JWT Bearer Authentication
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "JWT Auth API",
+        Version = "v1",
+        Description = "JWT Authentication API with Role-Based Access Control",
+        Contact = new OpenApiContact
+        {
+            Name = "Your Name",
+            Email = "your.email@example.com"
+        }
+    });
+
+    // Define the Bearer authentication scheme
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+    });
+
+    // Make sure Swagger UI requires a Bearer token to be specified
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))); // Configure the database context with PostgreSQL
@@ -22,13 +64,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
+            ValidateIssuer = false,
+            ValidateAudience = false,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(key)
+            IssuerSigningKey = new SymmetricSecurityKey(key),
+            ClockSkew = TimeSpan.FromMinutes(5) // Allow 5 minute clock skew
         };
     });
 

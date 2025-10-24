@@ -36,7 +36,7 @@ namespace JWTAuthAPI.Controllers
                 Username = registerDto.Username,
                 Email = registerDto.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerDto.Password),
-                Role = "User", // Default role
+                Role = Roles.User, // Default role
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -244,6 +244,50 @@ namespace JWTAuthAPI.Controllers
                 StatusCode = 200,
                 IsSuccess = true,
                 Result = "Logged out successfully"
+            });
+        }
+
+        [HttpPost("register-admin")]
+        public async Task<IActionResult> RegisterAdmin(RegisterDto registerDto)
+        {
+            // Check if username already exists
+            if (await _context.ApplicationUsers.AnyAsync(u => u.Username == registerDto.Username))
+                return BadRequest(new ApiResponse<string>
+                {
+                    StatusCode = 400,
+                    IsSuccess = false,
+                    ErrorMessage = { "Username already exists" }
+                });
+
+            // Check if email already exists
+            if (await _context.ApplicationUsers.AnyAsync(u => u.Email == registerDto.Email))
+                return BadRequest(new ApiResponse<string>
+                {
+                    StatusCode = 400,
+                    IsSuccess = false,
+                    ErrorMessage = { "Email already exists" }
+                });
+
+            // Create new admin user
+            var admin = new ApplicationUser
+            {
+                Username = registerDto.Username,
+                Email = registerDto.Email,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerDto.Password),
+                Role = Roles.Admin, // Admin role
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.ApplicationUsers.Add(admin);
+            await _context.SaveChangesAsync();
+
+            return Ok(new ApiResponse<object>
+            {
+                StatusCode = 200,
+                IsSuccess = true,
+                Result = new { message = "Admin registered successfully", userId = admin.Id }
             });
         }
     }

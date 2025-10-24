@@ -1,8 +1,12 @@
 @JWTAuthAPI_HostAddress = http://localhost:5147
 @accessToken = 
 @refreshToken = 
+@adminAccessToken = 
+@adminRefreshToken = 
 
-### Register a new user
+### ========== USER REGISTRATION & AUTH ==========
+
+### Register a new user (Role: User)
 POST {{JWTAuthAPI_HostAddress}}/api/auth/register
 Content-Type: application/json
 
@@ -14,7 +18,19 @@ Content-Type: application/json
 
 ###
 
-### Login
+### Register an Admin (Role: Admin)
+POST {{JWTAuthAPI_HostAddress}}/api/auth/register-admin
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "email": "admin@example.com",
+  "password": "AdminPass123"
+}
+
+###
+
+### Login as User
 POST {{JWTAuthAPI_HostAddress}}/api/auth/login
 Content-Type: application/json
 
@@ -25,7 +41,18 @@ Content-Type: application/json
 
 ###
 
-### Refresh Token (Use the refresh token from login response)
+### Login as Admin
+POST {{JWTAuthAPI_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "AdminPass123"
+}
+
+###
+
+### Refresh Token
 POST {{JWTAuthAPI_HostAddress}}/api/auth/refresh
 Content-Type: application/json
 
@@ -35,7 +62,7 @@ Content-Type: application/json
 
 ###
 
-### Logout (Use the refresh token)
+### Logout
 POST {{JWTAuthAPI_HostAddress}}/api/auth/logout
 Content-Type: application/json
 
@@ -45,9 +72,67 @@ Content-Type: application/json
 
 ###
 
-### Protected Endpoint Example (Use the access token in Authorization header)
-GET {{JWTAuthAPI_HostAddress}}/weatherforecast/
+### ========== USER MANAGEMENT (ADMIN ONLY) ==========
+
+### Get All Users (Admin Only)
+GET {{JWTAuthAPI_HostAddress}}/api/usermanagement/users
+Accept: application/json
+Authorization: Bearer {{adminAccessToken}}
+
+###
+
+### Get User By ID (Admin Only)
+GET {{JWTAuthAPI_HostAddress}}/api/usermanagement/users/1
+Accept: application/json
+Authorization: Bearer {{adminAccessToken}}
+
+###
+
+### Get My Profile (Any Authenticated User)
+GET {{JWTAuthAPI_HostAddress}}/api/usermanagement/profile
 Accept: application/json
 Authorization: Bearer {{accessToken}}
+
+###
+
+### Change Password (Any Authenticated User)
+PUT {{JWTAuthAPI_HostAddress}}/api/usermanagement/change-password
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "currentPassword": "SecurePass123",
+  "newPassword": "NewSecurePass456",
+  "confirmPassword": "NewSecurePass456"
+}
+
+###
+
+### Update User Role (Admin Only)
+PUT {{JWTAuthAPI_HostAddress}}/api/usermanagement/users/2/role
+Content-Type: application/json
+Authorization: Bearer {{adminAccessToken}}
+
+{
+  "role": "Admin"
+}
+
+###
+
+### Deactivate User (Admin Only)
+PUT {{JWTAuthAPI_HostAddress}}/api/usermanagement/users/2/deactivate
+Authorization: Bearer {{adminAccessToken}}
+
+###
+
+### Activate User (Admin Only)
+PUT {{JWTAuthAPI_HostAddress}}/api/usermanagement/users/2/activate
+Authorization: Bearer {{adminAccessToken}}
+
+###
+
+### Delete User (Admin Only)
+DELETE {{JWTAuthAPI_HostAddress}}/api/usermanagement/users/2
+Authorization: Bearer {{adminAccessToken}}
 
 ###
