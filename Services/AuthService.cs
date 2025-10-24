@@ -5,8 +5,4 @@ using System.Threading.Tasks;
 
 namespace JWTAuthAPI.Services
 {
-    public class AuthService
-    {
-        
-    }
 }
